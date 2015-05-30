@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <regex.h>
 
 #include "arg.h"
 #include "config.h"
@@ -15,6 +16,8 @@ char *argv0;
 static char *host = DEFAULT_HOST;
 static char *port = DEFAULT_PORT;
 static char *password;
+static int finit = 0;
+static regex_t filter;
 static char nick[32];
 static char bufin[4096];
 static char bufout[4096];
@@ -35,6 +38,7 @@ pout(char *channel, char *fmt, ...) {
 	va_end(ap);
 	t = time(NULL);
 	strftime(timestr, sizeof timestr, TIMESTAMP_FORMAT, localtime(&t));
+	if (finit && !regexec(&filter, bufout, 0, NULL, 0)) return;
 	fprintf(stdout, "%-12s: %s %s\n", channel, timestr, bufout);
 }
 
@@ -138,7 +142,7 @@ parsesrv(char *cmd) {
 
 static void
 usage(void) {
-	eprint("usage: sic [-h host] [-p port] [-n nick] [-k keyword] [-v]\n", argv0);
+	eprint("usage: sic [-h host] [-p port] [-n nick] [-k keyword] [-f filter] [-v]\n", argv0);
 }
 
 int
@@ -162,8 +166,16 @@ main(int argc, char *argv[]) {
 	case 'k':
 		password = EARGF(usage());
 		break;
+	case 'f':
+		n = regcomp(&filter, EARGF(usage()), 0);
+		finit = 1;
+		if (n) {
+			fprintf(stderr, "Could not compile regex\n");
+			exit(1);
+		}
+		break;
 	case 'v':
-		eprint("sic-"VERSION", © 2005-2014 Kris Maglione, Anselm R. Garbe, Nico Golde\n");
+		eprint("sic-"VERSION", © 2005-2014 Kris Maglione, Anselm R. Garbe, Nico Golde, Andrea Brancaleoni\n");
 		break;
 	default:
 		usage();
