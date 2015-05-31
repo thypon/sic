@@ -8,6 +8,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <regex.h>
+#include <sys/time.h>
 
 #include "arg.h"
 #include "config.h"
@@ -24,8 +25,35 @@ static char bufout[4096];
 static char channel[256];
 static time_t trespond;
 static FILE *srv;
+static int T[256];
 
 #include "util.c"
+
+void shuffle(int *array, size_t n) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    int usec = tv.tv_usec;
+    srand48(usec);
+
+
+    if (n > 1) {
+        size_t i;
+        for (i = n - 1; i > 0; i--) {
+            size_t j = (unsigned int) (drand48()*(i+1));
+            int t = array[j];
+            array[j] = array[i];
+            array[i] = t;
+        }
+    }
+}
+
+static int
+color(char *c) {
+	int h = 0;
+	for (int i = 0, l = strlen(c); i < l; i++) h = T[h ^ c[i]];
+	h %= 16;
+	return h >= 8 ? (h % 8) + 30 : (h % 8) + 90;
+}
 
 static void
 pout(char *channel, char *fmt, ...) {
@@ -39,7 +67,7 @@ pout(char *channel, char *fmt, ...) {
 	t = time(NULL);
 	strftime(timestr, sizeof timestr, TIMESTAMP_FORMAT, localtime(&t));
 	if (finit && !regexec(&filter, bufout, 0, NULL, 0)) return;
-	fprintf(stdout, "%-12s: %s %s\n", channel, timestr, bufout);
+	fprintf(stdout, "\e[0;%dm%-12s\e[m: %s %s\n", color(channel), channel, timestr, bufout);
 }
 
 static void
@@ -58,7 +86,7 @@ privmsg(char *channel, char *msg) {
 		pout("", "No channel to send to");
 		return;
 	}
-	pout(channel, "<%s> %s", nick, msg);
+	pout(channel, "<\e[0;%dm%s\e[m> %s", color(nick), nick, msg);
 	sout("PRIVMSG %s :%s", channel, msg);
 }
 
@@ -129,7 +157,7 @@ parsesrv(char *cmd) {
 	if(!strcmp("PONG", cmd))
 		return;
 	if(!strcmp("PRIVMSG", cmd))
-		pout(par, "<%s> %s", usr, txt);
+		pout(par, "<\e[0;%dm%s\e[m> %s", color(usr), usr, txt);
 	else if(!strcmp("PING", cmd))
 		sout("PONG %s", txt);
 	else {
@@ -151,6 +179,9 @@ main(int argc, char *argv[]) {
 	const char *user = getenv("USER");
 	int n;
 	fd_set rd;
+
+	for (int i = 0; i < 256; i++) T[i] = i;
+	shuffle(T, 256);
 
 	strlcpy(nick, user ? user : "unknown", sizeof nick);
 	ARGBEGIN {
